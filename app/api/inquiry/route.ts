@@ -159,6 +159,47 @@ export async function POST(req: NextRequest) {
       value == null ? '' : String(value)
     );
 
+    if (req.headers.get('x-inquiry-debug') === '1' && body.deleteLastTest) {
+      const countRes = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(`${quoteSheet(tab.title)}!A:A`)}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const countText = await countRes.text();
+      if (!countRes.ok) throw new Error(`Could not read signup tab: ${googleErrorMessage(countText)}`);
+      const rowNumber = ((JSON.parse(countText) as { values?: string[][] }).values ?? []).length;
+      const readRes = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(`${quoteSheet(tab.title)}!A${rowNumber}:I${rowNumber}`)}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const readText = await readRes.text();
+      if (!readRes.ok) throw new Error(`Could not read signup row: ${googleErrorMessage(readText)}`);
+      const last = ((JSON.parse(readText) as { values?: string[][] }).values?.[0] ?? []);
+      const emailMatched = last[8] === 'inquiry-test@example.com' && last[1] === 'Form Test — please ignore';
+      let deleted = false;
+      if (emailMatched && rowNumber > 1) {
+        const deleteRes = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              requests: [{
+                deleteDimension: {
+                  range: { sheetId: tab.sheetId, dimension: 'ROWS', startIndex: rowNumber - 1, endIndex: rowNumber },
+                },
+              }],
+            }),
+          }
+        );
+        deleted = deleteRes.ok;
+        if (!deleteRes.ok) console.error('Test row delete failed:', await deleteRes.text());
+      }
+      return NextResponse.json({ success: true, deleted, emailMatched, rowNumber });
+    }
+
     const updatedRange = await appendInquiry(token, tab, values);
 
     if (req.headers.get('x-inquiry-debug') === '1' && email === 'inquiry-test@example.com') {
