@@ -5,6 +5,16 @@ const SHEET_ID = '1adGVYX1uv41nVKiAWjlUUFBH3T-16aCKJAGYnT9MK40';
 const MASTER_TAB = 'ORIGINAL SIGN UP';
 const EXPECTED_HEADERS = ['Timestamp', 'Parent Name', 'Kid Name', 'Age', 'Grade', 'Position', 'School', 'Program', 'Email'];
 
+// Override with INQUIRY_ALERT_EMAILS (comma-separated) in the Vercel project settings.
+const DEFAULT_ALERT_RECIPIENTS = [
+  'director@highintensityfootball.com',
+  'tamoe33@gmail.com',
+  'ctaumoep@qualcomm.com',
+  'highintensitysd@gmail.com',
+  'highintensitycoachab@gmail.com',
+];
+const DEFAULT_FROM_EMAIL = 'High Intensity Football <inquiries@highintensityfootball.com>';
+
 type SheetTab = { title: string };
 
 function loadCredentials() {
@@ -28,21 +38,20 @@ function googleErrorMessage(body: string) {
   }
 }
 
-async function getAccessToken(scope = 'https://www.googleapis.com/auth/spreadsheets', subject?: string) {
+async function getAccessToken() {
   const credentials = loadCredentials();
   if (!credentials.client_email || !credentials.private_key) {
     throw new Error('GOOGLE_SERVICE_ACCOUNT is missing client_email or private_key');
   }
 
   const now = Math.floor(Date.now() / 1000);
-  const payload: Record<string, string | number> = {
+  const payload = {
     iss: credentials.client_email,
-    scope,
+    scope: 'https://www.googleapis.com/auth/spreadsheets',
     aud: 'https://oauth2.googleapis.com/token',
     iat: now,
     exp: now + 3600,
   };
-  if (subject) payload.sub = subject;
 
   const header = btoa(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
   const body = btoa(JSON.stringify(payload)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -142,26 +151,59 @@ async function appendInquiry(token: string, tab: SheetTab, values: string[]) {
   return data.updates?.updatedRange ?? '';
 }
 
+function oneLine(value: unknown) {
+  return String(value ?? '').replace(/[\r\n]+/g, ' ').trim();
+}
+
+function isEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function alertRecipients() {
+  const configured = process.env.INQUIRY_ALERT_EMAILS;
+  if (configured == null || configured.trim() === '') return [...DEFAULT_ALERT_RECIPIENTS];
+  return configured.split(/[,;\s]+/).map(item => item.trim()).filter(isEmail);
+}
+
+async function sendInquiryAlert(fields: { label: string; value: string }[], replyTo: string) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.error('Inquiry email skipped: RESEND_API_KEY is not set');
+    return;
+  }
+
+  const to = alertRecipients();
+  if (to.length === 0) {
+    console.error('Inquiry email skipped: INQUIRY_ALERT_EMAILS has no valid addresses');
+    return;
+  }
+
+  const kidName = fields.find(field => field.label === "Kid's Name")?.value || 'Unknown athlete';
+  const parentName = fields.find(field => field.label === 'Parent Name')?.value || '';
+  const subject = `${/\btest\b/i.test(parentName) ? 'TEST — ' : ''}New High Intensity inquiry: ${kidName}`;
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: process.env.INQUIRY_FROM_EMAIL?.trim() || DEFAULT_FROM_EMAIL,
+      to,
+      reply_to: isEmail(replyTo) ? replyTo : undefined,
+      subject,
+      text: ['A new inquiry was submitted on the High Intensity website.', '', ...fields.map(field => `${field.label}: ${field.value || '—'}`)].join('\n'),
+    }),
+  });
+
+  if (!res.ok) {
+    console.error('Inquiry email failed:', res.status, (await res.text()).slice(0, 500));
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    if (req.headers.get('x-inquiry-debug') === '1' && body.probeMail) {
-      try {
-        const gmailToken = await getAccessToken('https://www.googleapis.com/auth/gmail.send');
-        const sendRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${gmailToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        });
-        const sendText = await sendRes.text();
-        return NextResponse.json({ status: sendRes.status, message: googleErrorMessage(sendText) });
-      } catch (error) {
-        return NextResponse.json({
-          status: 0,
-          message: error instanceof Error ? error.message : 'token failed',
-        });
-      }
-    }
     const { parentName, kidName, dob, grade, position, school, email, program } = body;
     const token = await getAccessToken();
     const tab = await resolveTab(token);
@@ -171,6 +213,23 @@ export async function POST(req: NextRequest) {
     );
 
     await appendInquiry(token, tab, values);
+
+    try {
+      await sendInquiryAlert([
+        { label: 'Timestamp', value: oneLine(timestamp) },
+        { label: 'Parent Name', value: oneLine(parentName) },
+        { label: "Kid's Name", value: oneLine(kidName) },
+        { label: 'Date of Birth', value: oneLine(dob) },
+        { label: 'Grade', value: oneLine(grade) },
+        { label: 'Position', value: oneLine(position) },
+        { label: 'Current School', value: oneLine(school) },
+        { label: 'Interested In', value: oneLine(program) },
+        { label: 'Email', value: oneLine(email) },
+      ], oneLine(email));
+    } catch (error) {
+      console.error('Inquiry email failed:', error);
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Inquiry error:', error);
