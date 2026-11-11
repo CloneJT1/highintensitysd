@@ -132,26 +132,43 @@ export async function POST(req: NextRequest) {
         sheets?: { properties?: { title?: string } }[];
       } : undefined;
       const headers: Record<string, string[]> = {};
+      const rowCounts: Record<string, number> = {};
       if (metadata?.sheets) {
         for (const sheet of metadata.sheets) {
           const title = sheet.properties?.title;
           if (!title) continue;
+          const quoted = `'${title.replace(/'/g, "''")}'`;
           const headerRes = await fetch(
-            `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(`'${title.replace(/'/g, "''")}'!1:1`)}`,
+            `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(`${quoted}!1:1`)}`,
             { headers: { Authorization: `Bearer ${token.accessToken}` } }
           );
           const headerText = await headerRes.text();
           headers[title] = headerRes.ok
             ? ((JSON.parse(headerText) as { values?: string[][] }).values?.[0] ?? [])
             : [`ERROR ${headerRes.status}: ${googleErrorMessage(headerText)}`];
+          const countRes = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(`${quoted}!A:A`)}?majorDimension=COLUMNS`,
+            { headers: { Authorization: `Bearer ${token.accessToken}` } }
+          );
+          const countText = await countRes.text();
+          rowCounts[title] = countRes.ok
+            ? (((JSON.parse(countText) as { values?: string[][] }).values?.[0]?.length) ?? 0)
+            : -1;
         }
       }
+      const sheet1Res = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent('Sheet1!A1')}`,
+        { headers: { Authorization: `Bearer ${token.accessToken}` } }
+      );
+      const sheet1Text = await sheet1Res.text();
       return NextResponse.json({
         stage: 'metadata',
         status: metaRes.status,
         message: metaRes.ok ? undefined : googleErrorMessage(metaText),
         metadata,
         headers,
+        rowCounts,
+        sheet1: { status: sheet1Res.status, message: sheet1Res.ok ? 'ok' : googleErrorMessage(sheet1Text) },
       }, { status: metaRes.ok ? 200 : 500 });
     }
 
