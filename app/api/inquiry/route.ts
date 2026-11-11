@@ -1,31 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const SHEET_ID = '1adGVYX1uv41nVKiAWjlUUFBH3T-16aCKJAGYnT9MK40';
-// Headers: Timestamp, Parent Name, Kid Name, Age, Grade, Position, Program, Email
+// The signup tab was renamed; there is no tab called Sheet1.
+const MASTER_TAB = 'ORIGINAL SIGN UP';
+const EXPECTED_HEADERS = ['Timestamp', 'Parent Name', 'Kid Name', 'Age', 'Grade', 'Position', 'School', 'Program', 'Email'];
 
-type Credentials = {
-  client_email?: string;
-  private_key?: string;
-};
+type SheetTab = { title: string; sheetId: number };
 
-function loadCredentials(): Credentials {
+function loadCredentials() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT;
-  if (!raw) {
-    throw new Error('GOOGLE_SERVICE_ACCOUNT is not set');
-  }
-  return JSON.parse(raw) as Credentials;
+  if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT is not set');
+  return JSON.parse(raw) as { client_email?: string; private_key?: string };
 }
 
 function googleErrorMessage(body: string) {
   try {
     const parsed = JSON.parse(body) as {
-      error?: string | { message?: string; status?: string };
+      error?: string | { message?: string };
       error_description?: string;
     };
     if (typeof parsed.error === 'string') {
-      return parsed.error_description
-        ? `${parsed.error}: ${parsed.error_description}`
-        : parsed.error;
+      return parsed.error_description ? `${parsed.error}: ${parsed.error_description}` : parsed.error;
     }
     return parsed.error?.message || body.slice(0, 500);
   } catch {
@@ -35,6 +30,9 @@ function googleErrorMessage(body: string) {
 
 async function getAccessToken() {
   const credentials = loadCredentials();
+  if (!credentials.client_email || !credentials.private_key) {
+    throw new Error('GOOGLE_SERVICE_ACCOUNT is missing client_email or private_key');
+  }
 
   const now = Math.floor(Date.now() / 1000);
   const payload = {
@@ -45,20 +43,14 @@ async function getAccessToken() {
     exp: now + 3600,
   };
 
-  // Create JWT
   const header = btoa(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
   const body = btoa(JSON.stringify(payload)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
   const signingInput = `${header}.${body}`;
 
-  // Import the private key
-  const privateKeyPem = credentials.private_key;
-  if (!privateKeyPem || !credentials.client_email) {
-    throw new Error('GOOGLE_SERVICE_ACCOUNT is missing client_email or private_key');
-  }
-  const privateKeyDer = privateKeyPem
+  const privateKeyDer = credentials.private_key
     .replace('-----BEGIN PRIVATE KEY-----', '')
     .replace('-----END PRIVATE KEY-----', '')
-    .replace(/\n/g, '');
+    .replace(/\s/g, '');
 
   const keyBuffer = Uint8Array.from(atob(privateKeyDer), c => c.charCodeAt(0));
   const cryptoKey = await crypto.subtle.importKey(
@@ -78,156 +70,140 @@ async function getAccessToken() {
   const sigBase64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
     .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 
-  const jwt = `${signingInput}.${sigBase64}`;
-
-  // Exchange for access token
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`,
+    body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${signingInput}.${sigBase64}`,
   });
-
   const tokenText = await tokenRes.text();
-  let tokenData: { access_token?: string } = {};
-  try {
-    tokenData = JSON.parse(tokenText) as { access_token?: string };
-  } catch {
-    tokenData = {};
+  if (!tokenRes.ok) {
+    throw new Error(`Google token exchange failed: ${googleErrorMessage(tokenText)}`);
   }
-  return {
-    accessToken: tokenData.access_token,
-    status: tokenRes.status,
-    error: tokenRes.ok ? undefined : googleErrorMessage(tokenText),
-    serviceAccount: credentials.client_email,
-  };
+  const tokenData = JSON.parse(tokenText) as { access_token?: string };
+  if (!tokenData.access_token) throw new Error('Google token exchange returned no access token');
+  return tokenData.access_token;
+}
+
+function quoteSheet(title: string) {
+  return `'${title.replace(/'/g, "''")}'`;
+}
+
+async function listTabs(token: string): Promise<SheetTab[]> {
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets.properties(title,sheetId)`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Could not read spreadsheet: ${googleErrorMessage(text)}`);
+  const data = JSON.parse(text) as { sheets?: { properties?: { title?: string; sheetId?: number } }[] };
+  return (data.sheets ?? [])
+    .map(sheet => ({ title: sheet.properties?.title ?? '', sheetId: sheet.properties?.sheetId ?? -1 }))
+    .filter(sheet => sheet.title && sheet.sheetId >= 0);
+}
+
+async function headerRow(token: string, title: string) {
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(`${quoteSheet(title)}!1:1`)}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) return [];
+  const data = JSON.parse(await res.text()) as { values?: string[][] };
+  return data.values?.[0] ?? [];
+}
+
+async function resolveTab(token: string) {
+  const tabs = await listTabs(token);
+  const master = tabs.find(tab => tab.title.trim().toUpperCase() === MASTER_TAB);
+  if (master) return master;
+
+  for (const tab of tabs) {
+    const headers = await headerRow(token, tab.title);
+    if (EXPECTED_HEADERS.every((header, index) => headers[index] === header)) return tab;
+  }
+  throw new Error('No signup tab found');
+}
+
+async function appendInquiry(token: string, tab: SheetTab, values: string[]) {
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(`${quoteSheet(tab.title)}!A:I`)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ values: [values] }),
+    }
+  );
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Sheets append failed: ${googleErrorMessage(text)}`);
+  const data = JSON.parse(text) as { updates?: { updatedRange?: string } };
+  return data.updates?.updatedRange ?? '';
+}
+
+function rowIndex(updatedRange: string) {
+  const match = updatedRange.match(/![A-Z]+(\d+)/i);
+  if (!match) return null;
+  const row = Number(match[1]);
+  return Number.isInteger(row) && row > 1 ? row : null;
 }
 
 export async function POST(req: NextRequest) {
-  const debug = req.headers.get('x-inquiry-debug') === '1';
   try {
     const body = await req.json();
-    const { parentName, kidName, dob, grade, position, school, email, program, dryRun } = body;
-
+    const { parentName, kidName, dob, grade, position, school, email, program } = body;
     const token = await getAccessToken();
-    if (!token.accessToken) {
-      console.error('Inquiry token error:', token.error);
-      if (debug) {
-        return NextResponse.json({
-          stage: 'token',
-          status: token.status,
-          message: token.error,
-          serviceAccount: token.serviceAccount,
-        }, { status: 500 });
-      }
-      return NextResponse.json({ error: 'Failed to save' }, { status: 500 });
-    }
-
-    if (debug && dryRun) {
-      const metaRes = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=properties.title,sheets.properties.title`,
-        { headers: { Authorization: `Bearer ${token.accessToken}` } }
-      );
-      const metaText = await metaRes.text();
-      const metadata = metaRes.ok ? JSON.parse(metaText) as {
-        sheets?: { properties?: { title?: string } }[];
-      } : undefined;
-      const headers: Record<string, string[]> = {};
-      const rowCounts: Record<string, number> = {};
-      if (metadata?.sheets) {
-        for (const sheet of metadata.sheets) {
-          const title = sheet.properties?.title;
-          if (!title) continue;
-          const quoted = `'${title.replace(/'/g, "''")}'`;
-          const headerRes = await fetch(
-            `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(`${quoted}!1:1`)}`,
-            { headers: { Authorization: `Bearer ${token.accessToken}` } }
-          );
-          const headerText = await headerRes.text();
-          headers[title] = headerRes.ok
-            ? ((JSON.parse(headerText) as { values?: string[][] }).values?.[0] ?? [])
-            : [`ERROR ${headerRes.status}: ${googleErrorMessage(headerText)}`];
-          const countRes = await fetch(
-            `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(`${quoted}!A:A`)}?majorDimension=COLUMNS`,
-            { headers: { Authorization: `Bearer ${token.accessToken}` } }
-          );
-          const countText = await countRes.text();
-          rowCounts[title] = countRes.ok
-            ? (((JSON.parse(countText) as { values?: string[][] }).values?.[0]?.length) ?? 0)
-            : -1;
-        }
-      }
-      const knownHeaders = new Set(['Timestamp', 'Parent Name', 'Kid Name', 'Age', 'Grade', 'Position', 'School', 'Program', 'Email']);
-      const layout: Record<string, string[][]> = {};
-      if (metadata?.sheets) {
-        for (const sheet of metadata.sheets) {
-          const title = sheet.properties?.title;
-          if (!title) continue;
-          const quoted = `'${title.replace(/'/g, "''")}'`;
-          const sampleRes = await fetch(
-            `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(`${quoted}!A1:I3`)}`,
-            { headers: { Authorization: `Bearer ${token.accessToken}` } }
-          );
-          if (!sampleRes.ok) continue;
-          const sample = (JSON.parse(await sampleRes.text()) as { values?: string[][] }).values ?? [];
-          layout[title] = sample.map(row => row.map(cell => knownHeaders.has(cell) ? cell : cell ? 'filled' : ''));
-        }
-      }
-      const sheet1Res = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent('Sheet1!A1')}`,
-        { headers: { Authorization: `Bearer ${token.accessToken}` } }
-      );
-      const sheet1Text = await sheet1Res.text();
-      return NextResponse.json({
-        stage: 'metadata',
-        status: metaRes.status,
-        message: metaRes.ok ? undefined : googleErrorMessage(metaText),
-        metadata,
-        headers,
-        rowCounts,
-        layout,
-        sheet1: { status: sheet1Res.status, message: sheet1Res.ok ? 'ok' : googleErrorMessage(sheet1Text) },
-      }, { status: metaRes.ok ? 200 : 500 });
-    }
-
+    const tab = await resolveTab(token);
     const timestamp = new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
-
-    const appendRes = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Sheet1!A:I:append?valueInputOption=USER_ENTERED`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          values: [[timestamp, parentName, kidName, dob, grade, position, school, program, email]],
-        }),
-      }
+    const values = [timestamp, parentName, kidName, dob, grade, position, school, program, email].map(value =>
+      value == null ? '' : String(value)
     );
 
-    if (!appendRes.ok) {
-      const err = await appendRes.text();
-      console.error('Sheets error:', err);
-      if (debug) {
-        return NextResponse.json({
-          stage: 'sheets',
-          status: appendRes.status,
-          message: googleErrorMessage(err),
-          serviceAccount: token.serviceAccount,
-        }, { status: 500 });
+    const updatedRange = await appendInquiry(token, tab, values);
+
+    if (req.headers.get('x-inquiry-debug') === '1' && email === 'inquiry-test@example.com') {
+      const row = rowIndex(updatedRange);
+      const readRes = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(updatedRange)}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const readText = await readRes.text();
+      const readRow = readRes.ok ? ((JSON.parse(readText) as { values?: string[][] }).values?.[0] ?? []) : [];
+      const emailMatched = readRow[8] === 'inquiry-test@example.com' && readRow[1] === 'Form Test — please ignore';
+      let deleted = false;
+      if (emailMatched && row) {
+        const deleteRes = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              requests: [{
+                deleteDimension: {
+                  range: { sheetId: tab.sheetId, dimension: 'ROWS', startIndex: row - 1, endIndex: row },
+                },
+              }],
+            }),
+          }
+        );
+        deleted = deleteRes.ok;
+        if (!deleteRes.ok) console.error('Test row delete failed:', await deleteRes.text());
       }
-      return NextResponse.json({ error: 'Failed to save' }, { status: 500 });
+      return NextResponse.json({
+        success: true,
+        tab: tab.title,
+        updatedRange,
+        emailMatched,
+        deleted,
+      });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Inquiry error:', error);
-    if (debug) {
-      return NextResponse.json({
-        stage: 'exception',
-        message: error instanceof Error ? error.message : 'Server error',
-      }, { status: 500 });
-    }
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to save' }, { status: 500 });
   }
 }
