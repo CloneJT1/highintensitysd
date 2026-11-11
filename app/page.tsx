@@ -546,6 +546,7 @@ export default function Home() {
           <p className="text-gray-500 text-sm mb-12">12 years of High Intensity Football — from San Diego to Indianapolis.</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {[
+              '/archive/nfl-flag-sd-champions-2026.webp',
               '/archive/girls-flag-action-1.jpg',
               '/archive/girls-flag-action-2.jpg',
               '/archive/girls-flag-action-3.jpg',
@@ -823,7 +824,14 @@ export default function Home() {
               '/archive/ty-cortes-championship-int-field.jpg',
             ].map((src, i) => (
               <div key={src} className={`rounded overflow-hidden relative group ${i === 0 || i === 12 || i === 24 ? 'md:col-span-2 aspect-video' : 'aspect-square'}`}>
-                <Image src={src} alt="High Intensity Football" fill className="object-cover object-top group-hover:scale-105 transition-transform duration-500" />
+                <Image
+                  src={src}
+                  alt={src === '/archive/nfl-flag-sd-champions-2026.webp'
+                    ? 'High Intensity girls flag football team showing championship rings at NFL FLAG San Diego'
+                    : 'High Intensity Football'}
+                  fill
+                  className="object-cover object-top group-hover:scale-105 transition-transform duration-500"
+                />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
               </div>
             ))}
