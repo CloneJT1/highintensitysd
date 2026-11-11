@@ -128,12 +128,30 @@ export async function POST(req: NextRequest) {
         { headers: { Authorization: `Bearer ${token.accessToken}` } }
       );
       const metaText = await metaRes.text();
+      const metadata = metaRes.ok ? JSON.parse(metaText) as {
+        sheets?: { properties?: { title?: string } }[];
+      } : undefined;
+      const headers: Record<string, string[]> = {};
+      if (metadata?.sheets) {
+        for (const sheet of metadata.sheets) {
+          const title = sheet.properties?.title;
+          if (!title) continue;
+          const headerRes = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(`'${title.replace(/'/g, "''")}'!1:1`)}`,
+            { headers: { Authorization: `Bearer ${token.accessToken}` } }
+          );
+          const headerText = await headerRes.text();
+          headers[title] = headerRes.ok
+            ? ((JSON.parse(headerText) as { values?: string[][] }).values?.[0] ?? [])
+            : [`ERROR ${headerRes.status}: ${googleErrorMessage(headerText)}`];
+        }
+      }
       return NextResponse.json({
         stage: 'metadata',
         status: metaRes.status,
         message: metaRes.ok ? undefined : googleErrorMessage(metaText),
-        serviceAccount: token.serviceAccount,
-        metadata: metaRes.ok ? JSON.parse(metaText) : undefined,
+        metadata,
+        headers,
       }, { status: metaRes.ok ? 200 : 500 });
     }
 
