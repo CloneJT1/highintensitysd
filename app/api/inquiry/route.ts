@@ -5,7 +5,7 @@ const SHEET_ID = '1adGVYX1uv41nVKiAWjlUUFBH3T-16aCKJAGYnT9MK40';
 const MASTER_TAB = 'ORIGINAL SIGN UP';
 const EXPECTED_HEADERS = ['Timestamp', 'Parent Name', 'Kid Name', 'Age', 'Grade', 'Position', 'School', 'Program', 'Email'];
 
-type SheetTab = { title: string; sheetId: number };
+type SheetTab = { title: string };
 
 function loadCredentials() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT;
@@ -90,15 +90,15 @@ function quoteSheet(title: string) {
 
 async function listTabs(token: string): Promise<SheetTab[]> {
   const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets.properties(title,sheetId)`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets.properties.title`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   const text = await res.text();
   if (!res.ok) throw new Error(`Could not read spreadsheet: ${googleErrorMessage(text)}`);
-  const data = JSON.parse(text) as { sheets?: { properties?: { title?: string; sheetId?: number } }[] };
+  const data = JSON.parse(text) as { sheets?: { properties?: { title?: string } }[] };
   return (data.sheets ?? [])
-    .map(sheet => ({ title: sheet.properties?.title ?? '', sheetId: sheet.properties?.sheetId ?? -1 }))
-    .filter(sheet => sheet.title && sheet.sheetId >= 0);
+    .map(sheet => ({ title: sheet.properties?.title ?? '' }))
+    .filter(sheet => sheet.title);
 }
 
 async function headerRow(token: string, title: string) {
@@ -141,13 +141,6 @@ async function appendInquiry(token: string, tab: SheetTab, values: string[]) {
   return data.updates?.updatedRange ?? '';
 }
 
-function rowIndex(updatedRange: string) {
-  const match = updatedRange.match(/![A-Z]+(\d+)/i);
-  if (!match) return null;
-  const row = Number(match[1]);
-  return Number.isInteger(row) && row > 1 ? row : null;
-}
-
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -159,89 +152,7 @@ export async function POST(req: NextRequest) {
       value == null ? '' : String(value)
     );
 
-    if (req.headers.get('x-inquiry-debug') === '1' && body.deleteLastTest) {
-      const countRes = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(`${quoteSheet(tab.title)}!A:A`)}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const countText = await countRes.text();
-      if (!countRes.ok) throw new Error(`Could not read signup tab: ${googleErrorMessage(countText)}`);
-      const rowNumber = ((JSON.parse(countText) as { values?: string[][] }).values ?? []).length;
-      const readRes = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(`${quoteSheet(tab.title)}!A${rowNumber}:I${rowNumber}`)}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const readText = await readRes.text();
-      if (!readRes.ok) throw new Error(`Could not read signup row: ${googleErrorMessage(readText)}`);
-      const last = ((JSON.parse(readText) as { values?: string[][] }).values?.[0] ?? []);
-      const emailMatched = last[8] === 'inquiry-test@example.com' && last[1] === 'Form Test — please ignore';
-      let deleted = false;
-      if (emailMatched && rowNumber > 1) {
-        const deleteRes = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              requests: [{
-                deleteDimension: {
-                  range: { sheetId: tab.sheetId, dimension: 'ROWS', startIndex: rowNumber - 1, endIndex: rowNumber },
-                },
-              }],
-            }),
-          }
-        );
-        deleted = deleteRes.ok;
-        if (!deleteRes.ok) console.error('Test row delete failed:', await deleteRes.text());
-      }
-      return NextResponse.json({ success: true, deleted, emailMatched, rowNumber });
-    }
-
-    const updatedRange = await appendInquiry(token, tab, values);
-
-    if (req.headers.get('x-inquiry-debug') === '1' && email === 'inquiry-test@example.com') {
-      const row = rowIndex(updatedRange);
-      const readRes = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(updatedRange)}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const readText = await readRes.text();
-      const readRow = readRes.ok ? ((JSON.parse(readText) as { values?: string[][] }).values?.[0] ?? []) : [];
-      const emailMatched = readRow[8] === 'inquiry-test@example.com' && readRow[1] === 'Form Test — please ignore';
-      let deleted = false;
-      if (emailMatched && row) {
-        const deleteRes = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              requests: [{
-                deleteDimension: {
-                  range: { sheetId: tab.sheetId, dimension: 'ROWS', startIndex: row - 1, endIndex: row },
-                },
-              }],
-            }),
-          }
-        );
-        deleted = deleteRes.ok;
-        if (!deleteRes.ok) console.error('Test row delete failed:', await deleteRes.text());
-      }
-      return NextResponse.json({
-        success: true,
-        tab: tab.title,
-        updatedRange,
-        emailMatched,
-        deleted,
-      });
-    }
-
+    await appendInquiry(token, tab, values);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Inquiry error:', error);
