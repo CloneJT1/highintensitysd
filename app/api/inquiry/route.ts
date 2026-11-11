@@ -146,20 +146,21 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     if (req.headers.get('x-inquiry-debug') === '1' && body.probeMail) {
-      const attempts: { subject: string | null; ok: boolean; message?: string }[] = [];
-      for (const subject of [undefined, 'director@highintensityfootball.com'] as const) {
-        try {
-          await getAccessToken('https://www.googleapis.com/auth/gmail.send', subject);
-          attempts.push({ subject: subject ?? null, ok: true });
-        } catch (error) {
-          attempts.push({
-            subject: subject ?? null,
-            ok: false,
-            message: error instanceof Error ? error.message : 'token failed',
-          });
-        }
+      try {
+        const gmailToken = await getAccessToken('https://www.googleapis.com/auth/gmail.send');
+        const sendRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${gmailToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        const sendText = await sendRes.text();
+        return NextResponse.json({ status: sendRes.status, message: googleErrorMessage(sendText) });
+      } catch (error) {
+        return NextResponse.json({
+          status: 0,
+          message: error instanceof Error ? error.message : 'token failed',
+        });
       }
-      return NextResponse.json({ attempts });
     }
     const { parentName, kidName, dob, grade, position, school, email, program } = body;
     const token = await getAccessToken();
