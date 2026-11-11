@@ -28,20 +28,21 @@ function googleErrorMessage(body: string) {
   }
 }
 
-async function getAccessToken() {
+async function getAccessToken(scope = 'https://www.googleapis.com/auth/spreadsheets', subject?: string) {
   const credentials = loadCredentials();
   if (!credentials.client_email || !credentials.private_key) {
     throw new Error('GOOGLE_SERVICE_ACCOUNT is missing client_email or private_key');
   }
 
   const now = Math.floor(Date.now() / 1000);
-  const payload = {
+  const payload: Record<string, string | number> = {
     iss: credentials.client_email,
-    scope: 'https://www.googleapis.com/auth/spreadsheets',
+    scope,
     aud: 'https://oauth2.googleapis.com/token',
     iat: now,
     exp: now + 3600,
   };
+  if (subject) payload.sub = subject;
 
   const header = btoa(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
   const body = btoa(JSON.stringify(payload)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -144,6 +145,22 @@ async function appendInquiry(token: string, tab: SheetTab, values: string[]) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    if (req.headers.get('x-inquiry-debug') === '1' && body.probeMail) {
+      const attempts: { subject: string | null; ok: boolean; message?: string }[] = [];
+      for (const subject of [undefined, 'director@highintensityfootball.com'] as const) {
+        try {
+          await getAccessToken('https://www.googleapis.com/auth/gmail.send', subject);
+          attempts.push({ subject: subject ?? null, ok: true });
+        } catch (error) {
+          attempts.push({
+            subject: subject ?? null,
+            ok: false,
+            message: error instanceof Error ? error.message : 'token failed',
+          });
+        }
+      }
+      return NextResponse.json({ attempts });
+    }
     const { parentName, kidName, dob, grade, position, school, email, program } = body;
     const token = await getAccessToken();
     const tab = await resolveTab(token);
