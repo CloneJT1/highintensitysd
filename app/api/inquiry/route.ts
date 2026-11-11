@@ -156,6 +156,22 @@ export async function POST(req: NextRequest) {
             : -1;
         }
       }
+      const knownHeaders = new Set(['Timestamp', 'Parent Name', 'Kid Name', 'Age', 'Grade', 'Position', 'School', 'Program', 'Email']);
+      const layout: Record<string, string[][]> = {};
+      if (metadata?.sheets) {
+        for (const sheet of metadata.sheets) {
+          const title = sheet.properties?.title;
+          if (!title) continue;
+          const quoted = `'${title.replace(/'/g, "''")}'`;
+          const sampleRes = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(`${quoted}!A1:I3`)}`,
+            { headers: { Authorization: `Bearer ${token.accessToken}` } }
+          );
+          if (!sampleRes.ok) continue;
+          const sample = (JSON.parse(await sampleRes.text()) as { values?: string[][] }).values ?? [];
+          layout[title] = sample.map(row => row.map(cell => knownHeaders.has(cell) ? cell : cell ? 'filled' : ''));
+        }
+      }
       const sheet1Res = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent('Sheet1!A1')}`,
         { headers: { Authorization: `Bearer ${token.accessToken}` } }
@@ -168,6 +184,7 @@ export async function POST(req: NextRequest) {
         metadata,
         headers,
         rowCounts,
+        layout,
         sheet1: { status: sheet1Res.status, message: sheet1Res.ok ? 'ok' : googleErrorMessage(sheet1Text) },
       }, { status: metaRes.ok ? 200 : 500 });
     }
