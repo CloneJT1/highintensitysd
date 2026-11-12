@@ -1,7 +1,9 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { useState } from 'react';
+import SiteNav from '@/components/SiteNav';
 
 export default function Home() {
   const [form, setForm] = useState({ parentName: '', kidName: '', dob: '', grade: '', position: '', school: '', email: '', program: '' as string });
@@ -17,41 +19,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#080808] text-white overflow-x-hidden">
 
-      {/* NAV */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-md border-b border-white/5">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 relative rounded overflow-hidden">
-              <Image src="/hi-logo-mark.jpg" alt="HI" fill className="object-cover" />
-            </div>
-            <div className="leading-none">
-              <div className="font-black text-xs tracking-[0.2em] uppercase" style={{ color: '#CC0000' }}>High Intensity</div>
-              <div className="font-black text-xs tracking-[0.3em] uppercase text-gray-400">Football</div>
-            </div>
-          </div>
-          <div className="hidden md:flex gap-8 text-xs font-bold tracking-widest uppercase text-gray-400">
-            <a href="#origins" className="hover:text-white transition-colors">Origins</a>
-            <a href="#story" className="hover:text-white transition-colors">Story</a>
-            <a href="#achievements" className="hover:text-white transition-colors">Wins</a>
-            <a href="#the-road" className="hover:text-white transition-colors">The Road</a>
-            <a href="/championships" className="hover:text-white transition-colors">Record</a>
-            <a href="#coaches" className="hover:text-white transition-colors">Leadership</a>
-            <a href="#highlights" className="hover:text-white transition-colors">Highlights</a>
-          </div>
-          <div className="flex items-center gap-3">
-            <a href="https://instagram.com/highintensitysd" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white transition-colors" title="Instagram">
-              <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
-            </a>
-            <a href="https://tiktok.com/@highintensitysd" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white transition-colors" title="TikTok">
-              <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.78a4.85 4.85 0 01-1.01-.09z"/></svg>
-            </a>
-            <a href="https://x.com/highintensitysd" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white transition-colors font-black text-sm" title="X">𝕏</a>
-            <a href="#join" className="text-xs font-black tracking-widest uppercase px-5 py-2.5 rounded text-white transition-all hover:scale-105" style={{ backgroundColor: '#CC0000' }}>
-              Get Involved
-            </a>
-          </div>
-        </div>
-      </nav>
+      <SiteNav />
 
       {/* HERO */}
       <section className="relative min-h-screen flex items-end overflow-hidden">
@@ -92,6 +60,39 @@ export default function Home() {
                 Our Story
               </a>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 2027 SCHEDULE */}
+      <section id="schedule-2027" aria-labelledby="home-schedule-heading" className="px-4 sm:px-6 py-14 md:py-20 border-b border-white/5" style={{ backgroundColor: '#0d0000', borderTop: '4px solid #CC0000' }}>
+        <div className="max-w-7xl mx-auto grid lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.85fr)] gap-8 lg:gap-14 items-center">
+          <Link href="/schedule" className="group block overflow-hidden rounded-2xl border border-white/10 bg-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#CC0000]">
+            <Image
+              src="/media/2027-schedule-banner.webp"
+              alt="2027 National 7v7 Tournament Schedule poster, showing High Intensity Football athletes under the tournament title."
+              width={1024}
+              height={538}
+              quality={90}
+              sizes="(max-width: 1024px) 100vw, 720px"
+              className="h-auto w-full transition-transform duration-500 group-hover:scale-[1.02]"
+            />
+          </Link>
+          <div>
+            <p className="text-xs font-black tracking-[0.3em] uppercase mb-4" style={{ color: '#CC0000' }}>National 7v7</p>
+            <h2 id="home-schedule-heading" className="text-5xl md:text-7xl font-black uppercase leading-[0.85] mb-6">
+              2027<br />Schedule
+            </h2>
+            <p className="text-gray-300 text-lg leading-relaxed max-w-md mb-8">
+              Ten tournaments from January through May. Mesa, Orange County, Las Vegas, Mesquite, San Diego, Morgan Hill, and Phoenix.
+            </p>
+            <Link
+              href="/schedule"
+              className="inline-block font-black text-xs tracking-widest uppercase px-8 py-4 rounded text-white transition-all hover:scale-105 hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              style={{ backgroundColor: '#CC0000' }}
+            >
+              View Schedule
+            </Link>
           </div>
         </div>
       </section>
@@ -903,7 +904,7 @@ export default function Home() {
 
       {/* JOIN */}
       <span id="contact" aria-hidden="true" style={{ display: 'block', height: 0 }} />
-      <section id="join" className="py-24 px-6 border-t border-white/5" style={{ backgroundColor: '#0d0000' }}>
+      <section id="join" className="scroll-mt-28 py-24 px-6 border-t border-white/5" style={{ backgroundColor: '#0d0000' }}>
         <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-20">
           <div>
             <div className="text-xs font-black tracking-[0.3em] uppercase mb-6" style={{ color: '#CC0000' }}>Get Your Athlete Involved</div>
@@ -1056,6 +1057,7 @@ export default function Home() {
             </div>
           </div>
           <div className="flex gap-8 text-xs font-bold uppercase tracking-widest text-gray-600">
+            <a href="/schedule" className="hover:text-white transition-colors">Schedule</a>
             <a href="#story" className="hover:text-white transition-colors">Story</a>
             <a href="#achievements" className="hover:text-white transition-colors">Wins</a>
             <a href="#highlights" className="hover:text-white transition-colors">Film</a>
