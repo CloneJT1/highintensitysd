@@ -1,5 +1,4 @@
-import Image from 'next/image';
-import Link from 'next/link';
+import SiteNav from '@/components/SiteNav';
 
 export const metadata = {
   title: 'The Record | Championships | High Intensity Football',
@@ -15,25 +14,9 @@ export const metadata = {
 export default function Championships() {
   return (
     <main className="min-h-screen bg-[#080808] text-white">
-      {/* NAV */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-md border-b border-white/5">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="h-9 w-9 relative rounded overflow-hidden">
-              <Image src="/hi-logo-mark.jpg" alt="HI" fill className="object-cover" />
-            </div>
-            <div className="leading-none">
-              <div className="font-black text-xs tracking-[0.2em] uppercase" style={{ color: '#CC0000' }}>High Intensity</div>
-              <div className="font-black text-xs tracking-[0.3em] uppercase text-gray-400">Football</div>
-            </div>
-          </Link>
-          <Link href="/" className="text-xs font-black tracking-widest uppercase px-5 py-2.5 rounded border border-white/20 hover:border-white/50 transition-all">
-            ← Back to Site
-          </Link>
-        </div>
-      </nav>
+      <SiteNav />
 
-      <div className="pt-24 pb-24 px-6">
+      <div className="pt-32 xl:pt-28 pb-24 px-6">
         <div className="max-w-7xl mx-auto">
           {/* HEADER */}
           <div className="mb-16">
