@@ -547,6 +547,7 @@ export default function Home() {
           <p className="text-gray-500 text-sm mb-12">12 years of High Intensity Football — from San Diego to Indianapolis.</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {[
+              '/archive/hard-count-7v7-team-photo.webp',
               '/archive/nfl-flag-sd-champions-2026.webp',
               '/archive/girls-flag-action-1.jpg',
               '/archive/girls-flag-action-2.jpg',
@@ -824,14 +825,18 @@ export default function Home() {
               '/archive/jadyen-virgin-one-handed-snag.jpg',
               '/archive/ty-cortes-championship-int-field.jpg',
             ].map((src, i) => (
-              <div key={src} className={`rounded overflow-hidden relative group ${i === 0 || i === 12 || i === 24 ? 'md:col-span-2 aspect-video' : 'aspect-square'}`}>
+              // Wide tiles stay on the same photos after the Hard Count team photo was inserted at the front.
+              // That photo is portrait, so the square tile keeps the full team in frame.
+              <div key={src} className={`rounded overflow-hidden relative group ${i === 1 || i === 13 || i === 25 ? 'md:col-span-2 aspect-video' : 'aspect-square'}`}>
                 <Image
                   src={src}
-                  alt={src === '/archive/nfl-flag-sd-champions-2026.webp'
-                    ? 'High Intensity girls flag football team showing championship rings at NFL FLAG San Diego'
-                    : 'High Intensity Football'}
+                  alt={src === '/archive/hard-count-7v7-team-photo.webp'
+                    ? 'High Intensity 7v7 team photo at a Hard Count tournament'
+                    : src === '/archive/nfl-flag-sd-champions-2026.webp'
+                      ? 'High Intensity girls flag football team showing championship rings at NFL FLAG San Diego'
+                      : 'High Intensity Football'}
                   fill
-                  className="object-cover object-top group-hover:scale-105 transition-transform duration-500"
+                  className={`object-cover group-hover:scale-105 transition-transform duration-500 ${src === '/archive/hard-count-7v7-team-photo.webp' ? 'object-center' : 'object-top'}`}
                 />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
               </div>
